@@ -3,7 +3,7 @@ import pandas as pd
 import urllib.parse
 
 from config.config import API_URL, AUTH_HEADERS
-from Player import Player
+from core.Player import Player
 
 class Clan:
     
