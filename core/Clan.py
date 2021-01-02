@@ -43,7 +43,7 @@ class Clan:
         if resp.status_code == 200:
             self.warlog = resp.json()
             war_date = datetime.now() - timedelta(hours=18)
-            timestamp = war_date.strftime("%Y/%m/%d, %H:%M:%S")
+            timestamp = war_date.strftime("%Y/%m/%d")
             if war_date.month == 1 and war_date.strftime('%V') != '01':
                 flag = '%s_%s' % (war_date.year - 1, war_date.strftime('%V'))
             else:
