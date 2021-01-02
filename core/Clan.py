@@ -1,6 +1,9 @@
+import os
+import pickle
 import requests
 import pandas as pd
 import urllib.parse
+from datetime import datetime, timedelta
 
 from config.config import API_URL, AUTH_HEADERS
 from core.Player import Player
@@ -13,7 +16,9 @@ class Clan:
         self.warlog = {}
         self.members = []
         self.summary = None
-        self.warsummary = None
+        self.week_summary = None
+        self.daily_summary = None
+        self.flag = None
     
     def update(self):
         info_url = "%s/%s/%s" % (API_URL, 'clans', self.tag)
@@ -33,35 +38,50 @@ class Clan:
         self.summary = result
     
     def update_warsummary(self):
-        war_url = "%s/%s/%s/%s" % (API_URL, 'clans', self.tag, 'warlog')
+        war_url = "%s/%s/%s/%s" % (API_URL, 'clans', self.tag, 'currentriverrace')
         resp = requests.request("GET", war_url, headers=AUTH_HEADERS)
         if resp.status_code == 200:
             self.warlog = resp.json()
-            result = {}
-            for i in self.warlog['items']:
-                for p in i['participants']:
-                    if p['tag'] in result.keys():
-                        result[p['tag']]['Wins'] += p['wins']
-                        result[p['tag']]['FinalPlayed'] += p['battlesPlayed']
-                        result[p['tag']]['Final'] += p['numberOfBattles']
-                        result[p['tag']]['CollectPlayed'] += p['collectionDayBattlesPlayed']
-                        result[p['tag']]['Collect'] += 3
-                    else:
-                        result[p['tag']] = {
-                            'Name': p['name'], 
-                            'Wins': p['wins'], 
-                            'FinalPlayed': p['battlesPlayed'], 
-                            'Final': p['numberOfBattles'],
-                            'CollectPlayed': p['collectionDayBattlesPlayed'],
-                            'Collect': 3,
-                        }
-            for _,r in result.items():
-                r['WinRate'] = r['Wins']/r['Final']
-                r['Attendance'] = r['FinalPlayed']/r['Final']
-                r['CollectAttendance'] = r['CollectPlayed']/r['Collect']
-            
-            result = pd.DataFrame(result).T.sort_values(by='WinRate',ascending=False)
-            self.warsummary = result
+            war_date = datetime.now() - timedelta(hours=18)
+            timestamp = war_date.strftime("%Y/%m/%d, %H:%M:%S")
+            if war_date.month == 1 and war_date.strftime('%V') != '01':
+                flag = '%s_%s' % (war_date.year - 1, war_date.strftime('%V'))
+            else:
+                flag = '%s_%s' % (war_date.year, war_date.strftime('%V'))
+
+            pkl_file = 'result/' + flag + '.pkl'
+
+            if os.path.exists(pkl_file):
+                with open(pkl_file, 'rb') as f:
+                    result = pickle.load(f)
+            else:
+                result = {}
+
+            for p in self.warlog['clan']['participants']:
+                p_k = '%s (%s)' % (p['name'], p['tag'])
+                if p_k not in result.keys():
+                    result[p_k] = {}
+                result[p_k][timestamp] = p['fame']
+            with open(pkl_file, 'wb') as f:
+                pickle.dump(result, f)
+
+            week_summary = pd.DataFrame(result).T
+            week_summary = week_summary.sort_values(by=timestamp , ascending=False)
+            # week_summary.to_excel('result/summary_' + flag + '.xlsx')
+
+            daily_summary = pd.DataFrame([])
+            for i in range(len(week_summary.columns) - 1):
+                tmp = week_summary.iloc[:, i + 1] - week_summary.iloc[:, i]
+                if daily_summary.empty:
+                    daily_summary = tmp
+                else:
+                    daily_summary = pd.concat([daily_summary, tmp], axis=1)
+            daily_summary.columns = week_summary.columns[1:]
+            # daily_summary.to_excel('result/daily_' + flag + '.xlsx')
+            self.week_summary = week_summary
+            self.daily_summary = daily_summary
+            self.flag = flag
+        
     
     def get_info(self):
         if self.info:
@@ -73,4 +93,4 @@ class Clan:
         return self.summary
     
     def get_warsummary(self):
-        return self.warsummary
+        return self.week_summary, self.daily_summary, self.flag
